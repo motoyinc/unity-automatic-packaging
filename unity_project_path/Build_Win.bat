@@ -1,4 +1,6 @@
 @echo off
+:: -----------------------------
+:: 读定义变量的默认值
 :: Unity编辑器路径
 set UNITY_PATH="C:\Program Files\Unity\Hub\Editor\6000.0.19f1\Editor\Unity.exe"
 
@@ -11,7 +13,7 @@ set EXECUTE_METHOD=BuildProject.BuildGame
 :: 设置构建日志输出路径，输出到项目的Logs文件夹
 set LOG_PATH=.\Logs\build.log
 
-:: -----------------------------
+
 
 :: 设置平台
 set BUILD_TARGET="StandaloneWindows64"
@@ -25,7 +27,14 @@ set SCENES="Assets\Scenes\Terminal\TerminalScene.unity"
 :: 构建选项
 set BUILD_OPTIONS="None"
 
-:: %UNITY_PATH% -batchmode -quit -projectPath %PROJECT_PATH% -executeMethod %EXECUTE_METHOD% -buildTarget %BUILD_TARGET% -logFile %LOG_PATH% -locationPathName %LOCATION_PATH_NAME% -scenes %SCENES% -buildOptions "None"
+:: -----------------------------
+:: 读取命令行参数,覆盖默认值
+for %%a in ("%*") do (
+  set %%~a
+)
+
+:: -----------------------------
+:: 执行构建命令
 %UNITY_PATH% -batchmode -nographics -quit -projectPath %PROJECT_PATH% -executeMethod %EXECUTE_METHOD% -logFile %LOG_PATH% -buildTarget %BUILD_TARGET% -locationPathName %LOCATION_PATH_NAME% -scenes %SCENES% -buildOptions %BUILD_OPTIONS%
 echo Build completed
 pause
