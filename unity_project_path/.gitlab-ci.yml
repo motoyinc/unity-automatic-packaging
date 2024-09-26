@@ -1,0 +1,178 @@
+# This file is a template, and might need editing before it works on your project.
+# This is a sample GitLab CI/CD configuration file that should run without any modifications.
+# It demonstrates a basic 3 stage CI/CD pipeline. Instead of real tests or scripts,
+# it uses echo commands to simulate the pipeline execution.
+#
+# A pipeline is composed of independent jobs that run scripts, grouped into stages.
+# Stages run in sequential order, but jobs within stages run in parallel.
+#
+# For more information, see: https://docs.gitlab.com/ee/ci/yaml/index.html#stages
+#
+# You can copy and paste this template into a new `.gitlab-ci.yml` file.
+# You should not add this template to an existing `.gitlab-ci.yml` file by using the `include:` keyword.
+#
+# To contribute improvements to CI/CD templates, please follow the Development guide at:
+# https://docs.gitlab.com/ee/development/cicd/templates.html
+# This specific template is located at:
+# https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/ci/templates/Getting-Started.gitlab-ci.yml
+
+
+
+stages:          # List of stages for jobs, and their order of execution
+  - test
+  - build
+  - finish
+
+
+Weekly_build:
+  stage: test
+  variables:
+    GIT_STRATEGY: none
+  only:
+      - weekly
+  script:
+    # 通过邮箱或手机号获取用户ID
+    # - |
+    #   TOKEN_RESPONSE=$(curl -s -X POST "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal" \
+    #   -H "Content-Type:application/json; charset=utf-8" \
+    #   --data "{
+    #         \"app_id\": \"cli_a664fbbeadb9d00b\",
+    #         \"app_secret\": \"$FEISHU_USERID_TOKEN\"
+    #       }"
+    #     )
+    #   TOKEN=$(echo $TOKEN_RESPONSE | jq -r '.tenant_access_token')
+    #   echo $TOKEN
+    #   response=$(curl -s -w "\n%{http_code}" -X POST 'https://open.feishu.cn/open-apis/contact/v3/users/batch_get_id?user_id_type=user_id' \
+    #   -H "Authorization:Bearer $TOKEN" \
+    #   -H 'Content-Type:application/json' \
+    #   --data '{
+    #         "emails": [
+    #           "835771318@qq.com"
+    #         ],
+    #         "include_resigned": true
+    #       }'
+    #     )
+    #   echo $response
+    - |
+      curl -X POST "$FEISHU_ROBOT_URL" \
+      -H "Content-Type:application/json" \
+      -d '{
+            "msg_type": "text",
+            "content": {
+                "text": "<at user_id=\"all\">所有人</at> 周版本包已触发构建，weekly分支上传权限已回收。【管理员测试】"
+            }
+          }'
+
+
+trigger-jenkins-job:       # This job runs in the build stage, which runs first.
+  stage: build
+  variables:
+    GIT_STRATEGY: none
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      when: always
+    - if: '$CI_COMMIT_BRANCH != "weekly"'
+      when: on_success
+  script:
+  - |
+    JENKINS_HTTP_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$MTY_JENKINS_TRIGGERED_URL" \
+    -H "token:$TOKEN_JENKINS_BUILD" \
+    -H 'Content-Type: application/json' \
+    --data "{
+            \"s_branch\": \"$CI_COMMIT_BRANCH\",
+            \"s_project_name\": \"${CI_PROJECT_NAME}\",
+            \"s_project_url\": \"${CI_PROJECT_URL}\",
+            \"s_ci_id\": \"${CI_PIPELINE_ID}\",
+            \"s_feishu_robot_url\": \"$FEISHU_ROBOT_URL\",
+            \"s_versions\": \"v0.0.1-Alpha\",
+            \"s_buildWin64\": \"on\",
+            \"s_buildTarget\": \"StandaloneWindows64\",
+            \"s_buildAndroid\": \"off\",
+            \"s_buildTargetAndroid\": \"StandaloneWindows64\",
+            \"s_buildLinux64\": \"off\",
+            \"s_buildTargetLinux64\": \"StandaloneWindows64\",
+            \"s_buildOptions\": \"None\",
+            \"s_scenes\": [\"Assets\\Scenes\\Terminal\\TerminalScene.unity\"],
+            \"s_executeMethod\": \"BuildProject.BuildGame\",
+          }"
+      )
+    echo ${JENKINS_HTTP_RESPONSE:-"null"}
+
+  - |
+    HTTP_STATUS=$(echo "${JENKINS_HTTP_RESPONSE:-"null"}" | tail -n 1)
+    JENKINS_RESPONSE=$(echo "${JENKINS_HTTP_RESPONSE:-"null"}" | sed '$ d')
+    JOBS=$(echo ${JENKINS_RESPONSE:-"null"} | jq -r '.jobs')
+    
+    if [ "${JOBS:-"null"}" != "null" ]; then
+      JobStage="任务发送成功"
+    else
+      JobStage="任务发送失败"
+    fi
+    
+    JobMessage=$(echo ${JENKINS_RESPONSE:-"null"} | jq -r '.message')
+
+    echo "-------------飞书消息值-----------------"
+    echo "---jenkins响应体---"
+    echo "JENKINS_HTTP_RESPONSE:$JENKINS_HTTP_RESPONSE"
+    echo "HTTP_STATUS:$HTTP_STATUS"
+    echo "JOBS:$JOBS"
+    echo "JobStage:$JobStage"
+    echo "JobMessage:$JobMessage"
+    echo "---gitlab内部变量---"
+    echo "打包项目：${CI_PROJECT_NAME}${CI_PROJECT_URL}"
+    echo "触发分支：${CI_COMMIT_REF_NAME}"
+    echo "提交用户：${CI_COMMIT_AUTHOR}"
+    echo "哈希值：${CI_COMMIT_SHA}"
+    echo "提交信息：${CI_COMMIT_MESSAGE}"
+    echo "Git任务编号：${CI_PIPELINE_ID}${CI_PIPELINE_URL}"
+    echo "发送状态：$JobStage"
+    echo "jenkins消息：$JobMessage"
+    echo "Post请求状态码：$HTTP_STATUS"
+    echo "--------------------------------------"
+    
+  - |
+    curl -X POST "$FEISHU_ROBOT_URL" \
+      -H "Content-Type:application/json" \
+      -d "{
+            \"msg_type\": \"interactive\",
+            \"card\": {
+              \"config\": {\"wide_screen_mode\": true},
+              \"header\": {\"title\": {\"tag\": \"plain_text\", \"content\": \"Git仓库正在向打包机发送打包请求\"}},
+              \"elements\": [
+                {
+                  \"tag\": \"div\",
+                  \"fields\": [
+                    {
+                      \"is_short\": true,
+                      \"text\": {
+                        \"tag\": \"lark_md\",
+                        \"content\": \"**打包项目：** [${CI_PROJECT_NAME}](${CI_PROJECT_URL}) \\n**触发分支：**${CI_COMMIT_REF_NAME} \\n**提交用户：**${CI_COMMIT_AUTHOR} \\n**哈希值：**${CI_COMMIT_SHA} \"
+                      }
+                    },
+                    {
+                      \"is_short\": true,
+                      \"text\": {
+                        \"tag\": \"lark_md\",
+                        \"content\": \"**Git任务编号：** [${CI_PIPELINE_ID}](${CI_PIPELINE_URL}) \\n**发送状态：**$JobStage \\n**jenkins消息：**$JobMessage \\n**Post请求状态码：**$HTTP_STATUS \"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }"
+  - |
+    if [ "$JOBS" != "null" ]; then
+      echo "--------------任务成功--------------"
+    else
+      echo "--------------任务失败--------------"
+      exit 1
+    fi
+
+
+finish_check:
+  stage: finish
+  variables:
+    GIT_STRATEGY: none
+  script:
+    - echo "Notifying via Feishu bot..."
